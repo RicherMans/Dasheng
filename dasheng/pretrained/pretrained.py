@@ -79,25 +79,40 @@ class Dasheng(AudioTransformerMAE_Encoder):
         else:
             dump = torch.load(pretrained_url, map_location='cpu')
         model_parmeters, model_config = dump['model'], dump['config']
+
+        if 'dasheng_base' in pretrained_url:
+            model_config["embed_dim"] = 768
+            model_config["depth"] = 12
+            model_config["num_heads"] = 12
+        elif 'dasheng_06b' in pretrained_url:
+            model_config["embed_dim"] = 1280
+            model_config["depth"] = 32
+            model_config["num_heads"] = 16
+        elif 'dasheng_12b' in pretrained_url:
+            model_config["embed_dim"] = 1536
+            model_config["depth"] = 40
+            model_config["num_heads"] = 24
+        else:
+            raise ValueError(f"Unrecognized model url: {pretrained_url}")
+        
+        model_config.update((k, additional_model_kwargs[k]) for k in set(additional_model_kwargs).intersection(model_config))
+        
         instance = cls(**{**model_config, **additional_model_kwargs})
         instance.load_state_dict(model_parmeters, strict=True)
         return instance
 
 
 def dasheng_base(**model_kwargs):
-    model_kwargs.update({'embed_dim':768, 'depth':12, 'num_heads':12})
     return Dasheng.from_pretrained(PRETRAINED_CHECKPOINTS['dasheng_base'],
                                    **model_kwargs)
 
 
 def dasheng_06B(**model_kwargs):
-    model_kwargs.update({'embed_dim':1280,'depth':32, 'num_heads':16})
     return Dasheng.from_pretrained(PRETRAINED_CHECKPOINTS['dasheng_06B'],
                                    **model_kwargs)
 
 
 def dasheng_12B(**model_kwargs):
-    model_kwargs.update({'embed_dim':1536, 'depth':40, 'num_heads':24})
     return Dasheng.from_pretrained(PRETRAINED_CHECKPOINTS['dasheng_12B'],
                                    **model_kwargs)
 
