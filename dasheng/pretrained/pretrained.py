@@ -79,7 +79,6 @@ class Dasheng(AudioTransformerMAE_Encoder):
         else:
             dump = torch.load(pretrained_url, map_location='cpu')
         model_parmeters, model_config = dump['model'], dump['config']
-        
         instance = cls(**{**model_config, **additional_model_kwargs})
         instance.load_state_dict(model_parmeters, strict=True)
         return instance
