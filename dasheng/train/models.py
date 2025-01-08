@@ -166,8 +166,8 @@ class Block(nn.Module):
         drop=0.,
         attn_drop=0.,
         init_values=None,
-        act_layer: torch.Callable = nn.GELU,
-        norm_layer: torch.Callable = nn.LayerNorm,
+        act_layer: nn.Module = nn.GELU,
+        norm_layer: nn.Module = nn.LayerNorm,
         attention_type='Attention',
     ):
         super().__init__()
