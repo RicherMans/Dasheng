@@ -47,6 +47,7 @@ class Dasheng(AudioTransformerMAE_Encoder):
             else:
                 splits = torch.stack(splits, dim=0)
             n_splits = len(splits)
+            splits = torch.stack(splits, dim=0)
             # Splits into the batch_size, speeds up computation
             x = rearrange(splits, 'spl b c f t-> (spl b) c f t')
             x = self.forward_features(x)
