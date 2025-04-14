@@ -414,7 +414,7 @@ class AudioTransformerMAE_Encoder(nn.Module):
         pretrained_time_pos_embed = state_dict['time_pos_embed']
         pretrained_freq_pos_embed = state_dict['freq_pos_embed']
 
-        if target_freq_pos_embed_length <= pretrained_time_pos_embed.shape[-1]:
+        if target_time_pos_embed_length <= pretrained_time_pos_embed.shape[-1]:
             state_dict['time_pos_embed'] = pretrained_time_pos_embed[
                 ..., :target_time_pos_embed_length]
         else:
