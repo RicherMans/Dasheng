@@ -1,12 +1,10 @@
 import torch
 import torch.nn as nn
 from einops import rearrange
-import torch
-from torch.cuda.amp import autocast
+from torch.amp import autocast
 from functools import partial
-from typing import Optional, Tuple, Union
+from typing import Callable, Optional, Tuple, Union
 import torchaudio.transforms as audio_transforms
-from einops import rearrange
 from einops.layers.torch import Rearrange
 from itertools import repeat
 import collections
@@ -24,6 +22,14 @@ def _ntuple(n):
 
 to_2tuple = _ntuple(2)
 
+class KwargsSequential(nn.Sequential):
+
+    def forward(self, x, **kwargs):
+        for module in self._modules.values():
+            x = module(x, **kwargs)
+        return x
+
+
 
 class MAELoss(torch.nn.Module):
 
@@ -31,7 +37,7 @@ class MAELoss(torch.nn.Module):
         super().__init__()
         self.norm_pix_loss = norm_pix_loss
 
-    @autocast(enabled=False)
+    @autocast('cuda', enabled=False)
     def forward(self, pred: torch.Tensor, target: torch.Tensor,
                 mask: torch.Tensor) -> torch.Tensor:
         if self.norm_pix_loss is True:
@@ -113,7 +119,7 @@ class Attention(nn.Module):
         self.proj = nn.Linear(dim, dim)
         self.proj_drop = nn.Dropout(proj_drop)
 
-    def forward(self, x):
+    def forward(self, x, mask:Optional[torch.Tensor] = None):
         B, N, C = x.shape
         qkv = self.qkv(x).reshape(B, N, 3, self.num_heads,
                                   C // self.num_heads).permute(2, 0, 3, 1, 4)
@@ -121,9 +127,17 @@ class Attention(nn.Module):
             0)  # make torchscript happy (cannot use tensor as tuple)
 
         attn = (q @ k.transpose(-2, -1)) * self.scale
+        if mask is not None:
+            # mask value as the lowest possible value in fp32
+            mask_value = torch.finfo(attn.dtype).min
+            # Mask is of shape [1, SRC_LEN]
+            attn_mask = mask[:, None, None, :].expand(B, 1, N, N)
+            #Mask should be of shape
+            #[B,1,Target_len, Source_len]
+            attn = attn.masked_fill(attn_mask, mask_value)
         attn = attn.softmax(dim=-1)
+        attn = torch.nan_to_num(attn)
         attn = self.attn_drop(attn)
-
         x = (attn @ v).transpose(1, 2).reshape(B, N, C)
         x = self.proj(x)
         x = self.proj_drop(x)
@@ -134,9 +148,9 @@ class Mlp(nn.Module):
 
     def __init__(self,
                  in_features,
-                 hidden_features=None,
-                 out_features=None,
-                 act_layer=nn.GELU,
+                 hidden_features:Optional[int]=None,
+                 out_features:Optional[int]=None,
+                 act_layer:Callable=nn.GELU,
                  drop=0.):
         super().__init__()
         out_features = out_features or in_features
@@ -166,8 +180,8 @@ class Block(nn.Module):
         drop=0.,
         attn_drop=0.,
         init_values=None,
-        act_layer: nn.Module = nn.GELU,
-        norm_layer: nn.Module = nn.LayerNorm,
+        act_layer: Callable = nn.GELU,
+        norm_layer: Callable = nn.LayerNorm,
         attention_type='Attention',
     ):
         super().__init__()
@@ -189,8 +203,9 @@ class Block(nn.Module):
         self.ls2 = LayerScale(
             dim, init_values=init_values) if init_values else nn.Identity()
 
-    def forward(self, x):
-        x = x + self.ls1(self.attn(self.norm1(x)))
+    # kwargs is usually a mask
+    def forward(self, x, **kwargs):
+        x = x + self.ls1(self.attn(self.norm1(x), **kwargs))
         x = x + self.ls2(self.mlp(self.norm2(x)))
         return x
 
@@ -230,6 +245,8 @@ class AudioTransformerMAE_Encoder(nn.Module):
         self.embed_dim = embed_dim
         self.patch_stride = patch_stride
         self.patch_size = patch_size
+        self.hop_size = hop_size
+        self.win_size = win_size
         self.n_mels = n_mels
         self.eval_avg = eval_avg
         self.time_patch_out = time_patch_out
@@ -274,7 +291,7 @@ class AudioTransformerMAE_Encoder(nn.Module):
         act_layer = act_layer or nn.GELU
         self.pos_drop = nn.Dropout(p=drop_rate)
         block_function = globals()[block_type]
-        self.blocks = nn.Sequential(*[
+        self.blocks = KwargsSequential(*[
             block_function(
                 dim=embed_dim,
                 num_heads=num_heads,
@@ -436,7 +453,7 @@ class AudioTransformerMAE_Encoder(nn.Module):
 
     def forward_to_spec(self, x):
         # Do not use fp16 for feature extraction, that is likely to get nan
-        with autocast(enabled=False):
+        with autocast('cuda', enabled=False):
             X = self.front_end(x)
             X = rearrange(X, 'b f t -> b 1 f t')
             X = self.init_bn(X)
@@ -569,7 +586,7 @@ class AudioTransformerMAE(nn.Module):
                 return_loss: bool = False):
         latent, mask, restore_ids = self.encoder(x, mask_ratio=mask_ratio)
         pred = self.decoder(latent, restore_ids)
-        with autocast(enabled=False):
+        with autocast('cuda', enabled=False):
             targets = self.encoder.front_end(x)
         targets = self.patchify(targets)
         if return_loss:
