@@ -86,30 +86,30 @@ class Dasheng(AudioTransformerMAE_Encoder):
         return instance
 
 
-def dasheng_base(**model_kwargs):
+def dasheng_base(path = None, **model_kwargs):
     model_kwargs["embed_dim"] = 768
     model_kwargs["depth"] = 12
     model_kwargs["num_heads"] = 12
     return Dasheng.from_pretrained(
-        PRETRAINED_CHECKPOINTS["dasheng_base"], **model_kwargs
+        pretrained_url=path or PRETRAINED_CHECKPOINTS["dasheng_base"], **model_kwargs
     )
 
 
-def dasheng_06B(**model_kwargs):
+def dasheng_06B(path = None, **model_kwargs):
     model_kwargs["embed_dim"] = 1280
     model_kwargs["depth"] = 32
     model_kwargs["num_heads"] = 16
     return Dasheng.from_pretrained(
-        PRETRAINED_CHECKPOINTS["dasheng_06B"], **model_kwargs
+        pretrained_url=path or PRETRAINED_CHECKPOINTS["dasheng_06B"], **model_kwargs
     )
 
 
-def dasheng_12B(**model_kwargs):
+def dasheng_12B(path = None, **model_kwargs):
     model_kwargs["embed_dim"] = 1536
     model_kwargs["depth"] = 40
     model_kwargs["num_heads"] = 24
     return Dasheng.from_pretrained(
-        PRETRAINED_CHECKPOINTS["dasheng_12B"], **model_kwargs
+        pretrained_url=path or PRETRAINED_CHECKPOINTS["dasheng_12B"], **model_kwargs
     )
 
 
